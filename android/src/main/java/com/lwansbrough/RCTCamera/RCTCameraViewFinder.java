@@ -265,17 +265,19 @@ class RCTCameraViewFinder extends TextureView implements TextureView.SurfaceText
     public void onPreviewFrame(byte[] data, Camera camera) {
         if (RCTCamera.getInstance().isBarcodeScannerEnabled() && !RCTCameraViewFinder.barcodeScannerTaskLock) {
             RCTCameraViewFinder.barcodeScannerTaskLock = true;
-            new ReaderAsyncTask(camera, data).execute();
+            new ReaderAsyncTask(camera, data, this._cameraType).execute();
         }
     }
 
     private class ReaderAsyncTask extends AsyncTask<Void, Void, Void> {
         private byte[] imageData;
         private final Camera camera;
+        private int cameraType;
 
-        ReaderAsyncTask(Camera camera, byte[] imageData) {
+        ReaderAsyncTask(Camera camera, byte[] imageData, int type) {
             this.camera = camera;
             this.imageData = imageData;
+            this.cameraType = type;
         }
 
         @Override
@@ -323,17 +325,31 @@ class RCTCameraViewFinder extends TextureView implements TextureView.SurfaceText
             }
         }
 
-        private WritableMap getBounds(ResultPoint[] points) {
-            double originX = Double.MAX_VALUE;
-            double originY = Double.MAX_VALUE;
-            double maxX = Double.MIN_VALUE;
-            double maxY = Double.MIN_VALUE;
 
-            double x;
-            double y;
+        // FOR AR.js "WORKING"
+
+        /*
+        private int modifyX(int x) {
+            int width = RCTCamera.getInstance().getPreviewWidth(this.cameraType);
+            return Math.abs(x - width);
+        }
+
+        private int modifyY(int y) {
+            int height = RCTCamera.getInstance().getPreviewHeight(this.cameraType);
+            return Math.abs(y - height);
+        }
+
+        private WritableMap getBounds(ResultPoint[] points) {
+            int originX = Integer.MAX_VALUE;
+            int originY = Integer.MAX_VALUE;
+            int maxX = Integer.MIN_VALUE;
+            int maxY = Integer.MIN_VALUE;
+
+            int x;
+            int y;
             for (ResultPoint p : points) {
-                x = (double)p.getX();
-                y = (double)p.getY();
+                x = (int)p.getX();
+                y = (int)p.getY();
                 originX = Math.min(originX, x);
                 originY = Math.min(originY, y);
                 maxX = Math.max(maxX, x);
@@ -341,16 +357,89 @@ class RCTCameraViewFinder extends TextureView implements TextureView.SurfaceText
             }
 
             WritableMap boundsOrigin = new WritableNativeMap();
-            boundsOrigin.putDouble("x", originX);
-            boundsOrigin.putDouble("y", originY);
+            boundsOrigin.putInt("x", this.modifyX(originX));
+            boundsOrigin.putInt("y", this.modifyY(originY));
 
             WritableMap boundsSize = new WritableNativeMap();
-            boundsSize.putDouble("width", maxX - originX);
-            boundsSize.putDouble("height", maxY - originY);
+            boundsSize.putInt("width", maxX - originX);
+            boundsSize.putInt("height", maxY - originY);
 
             WritableMap bounds = new WritableNativeMap();
             bounds.putMap("origin", boundsOrigin);
             bounds.putMap("size", boundsSize);
+
+            return bounds;
+        }
+        */
+
+
+        private double scaleX(double x) {
+            double cameraWidth = (double)RCTCamera.getInstance().getPreviewWidth(this.cameraType);
+            double deviceWidth = (double)getContext().getResources().getDisplayMetrics().widthPixels;
+            double deviceDensity = (double)getResources().getDisplayMetrics().density;
+            double apparentWidth = deviceWidth / deviceDensity;
+            double result = Math.abs(x - cameraWidth) / deviceWidth  * apparentWidth;
+            return result;
+        }
+
+        private double scaleY(double y) {
+            double cameraHeight = (double)RCTCamera.getInstance().getPreviewHeight(this.cameraType);
+            double deviceHeight = (double)getContext().getResources().getDisplayMetrics().heightPixels;
+            double deviceDensity = (double)getResources().getDisplayMetrics().density;
+            double apparentHeight = deviceHeight / deviceDensity;
+            double result = Math.abs(y - cameraHeight) / deviceHeight * apparentHeight;
+            return result;
+        }
+
+        private WritableMap getBounds(ResultPoint[] points) {
+            double originX = -1.0;
+            double originY = -1.0;
+            double maxX = Double.MAX_VALUE;
+            double maxY = Double.MAX_VALUE;
+
+            double x;
+            double y;
+            for (ResultPoint p : points) {
+                x = (double)p.getX();
+                y = (double)p.getY();
+                originX = Math.max(originX, x);
+                originY = Math.max(originY, y);
+                maxX = Math.min(maxX, x);
+                maxY = Math.min(maxY, y);
+            }
+
+            WritableMap boundsOrigin = new WritableNativeMap();
+            boundsOrigin.putInt("x", (int)this.scaleX(originX));
+            boundsOrigin.putInt("y", (int)this.scaleY(originY));
+
+            WritableMap boundsSize = new WritableNativeMap();
+            boundsSize.putInt("width", (int)(originX - maxX));
+            boundsSize.putInt("height", (int)(originY - maxY));
+
+            WritableMap boundsTest = new WritableNativeMap();
+            double cameraWidth = (double)RCTCamera.getInstance().getPreviewWidth(this.cameraType);
+            double cameraHeight = (double)RCTCamera.getInstance().getPreviewHeight(this.cameraType);
+            double deviceWidth = (double)getContext().getResources().getDisplayMetrics().widthPixels;
+            double deviceHeight = (double)getContext().getResources().getDisplayMetrics().heightPixels;
+            double deviceDensity = (double)getResources().getDisplayMetrics().density;
+            double apparentWidth = deviceWidth / deviceDensity;
+            double apparentHeight = deviceHeight / deviceDensity;
+            boundsTest.putDouble("originX", originX);
+            boundsTest.putDouble("originY", originY);
+            boundsTest.putDouble("width", maxX - originX);
+            boundsTest.putDouble("height", maxY - originY);
+            boundsTest.putDouble("deviceWidth", deviceWidth);
+            boundsTest.putDouble("deviceHeight", deviceHeight);
+            boundsTest.putDouble("cameraWidth", cameraWidth);
+            boundsTest.putDouble("cameraHeight", cameraHeight);
+            boundsTest.putDouble("deviceDensity", deviceDensity);
+            boundsTest.putDouble("apparentWidth", apparentWidth);
+            boundsTest.putDouble("apparentHeight", apparentHeight);
+
+            WritableMap bounds = new WritableNativeMap();
+            bounds.putMap("origin", boundsOrigin);
+            bounds.putMap("size", boundsSize);
+            bounds.putMap("test", boundsTest);
 
             return bounds;
         }
